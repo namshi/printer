@@ -60,27 +60,16 @@ func Default() (string, error) {
 
 // ReadNames return printer names on the system
 func ReadNames() ([]string, error) {
-	const flags = PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS
-	var needed, returned uint32
-	buf := make([]byte, 1)
-	err := EnumPrinters(flags, nil, 5, &buf[0], uint32(len(buf)), &needed, &returned)
-	if err != nil {
-		if err != syscall.ERROR_INSUFFICIENT_BUFFER {
-			return nil, err
-		}
-		buf = make([]byte, needed)
-		err = EnumPrinters(flags, nil, 5, &buf[0], uint32(len(buf)), &needed, &returned)
-		if err != nil {
-			return nil, err
-		}
-	}
-	ps := (*[1024]PRINTER_INFO_5)(unsafe.Pointer(&buf[0]))[:returned]
-	names := make([]string, 0, returned)
-	for _, p := range ps {
-		v := (*[1024]uint16)(unsafe.Pointer(p.PrinterName))[:]
-		names = append(names, syscall.UTF16ToString(v))
-	}
-	return names, nil
+	flags := PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS
+
+	return listPrintersNames(uint32(flags))
+}
+
+// ReadLocalNames return only local printer names on the system
+func ReadLocalNames() ([]string, error) {
+	flags := PRINTER_ENUM_LOCAL
+
+	return listPrintersNames(uint32(flags))
 }
 
 type Printer struct {
@@ -129,4 +118,28 @@ func (p *Printer) EndPage() error {
 
 func (p *Printer) Close() error {
 	return ClosePrinter(p.h)
+}
+
+// listPrintersNames private function that encapsulate the logic for listing printers names on windows
+func listPrintersNames(flags uint32) ([]string, error) {
+	var needed, returned uint32
+	buf := make([]byte, 1)
+	err := EnumPrinters(flags, nil, 5, &buf[0], uint32(len(buf)), &needed, &returned)
+	if err != nil {
+		if err != syscall.ERROR_INSUFFICIENT_BUFFER {
+			return nil, err
+		}
+		buf = make([]byte, needed)
+		err = EnumPrinters(flags, nil, 5, &buf[0], uint32(len(buf)), &needed, &returned)
+		if err != nil {
+			return nil, err
+		}
+	}
+	ps := (*[1024]PRINTER_INFO_5)(unsafe.Pointer(&buf[0]))[:returned]
+	names := make([]string, 0, returned)
+	for _, p := range ps {
+		v := (*[1024]uint16)(unsafe.Pointer(p.PrinterName))[:]
+		names = append(names, syscall.UTF16ToString(v))
+	}
+	return names, nil
 }
